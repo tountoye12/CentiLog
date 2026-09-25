@@ -108,6 +108,22 @@ From the repository root:
 
 To stop a Go service, press Ctrl+C in its terminal. If using Compose, `docker compose -f deploy/docker-compose.yml stop` stops containers without deleting their named volumes.
 
+## Deploy to a VPS
+
+The one-time installer supports fresh Debian and Ubuntu VPS hosts with `systemd`. Clone the repository and run the installer from its root:
+
+```bash
+git clone https://github.com/tountoye12/CentiLog.git
+cd CentiLog
+bash deploy/deploy.sh
+```
+
+The script installs Docker Engine and the Compose plugin if needed, creates a root `.env` with random PostgreSQL, Redis, ClickHouse, JWT, and demo-service credentials, builds and starts the services, then prompts for the initial admin email and password. An existing `.env` is retained and must contain all required variables. Store and back up `.env` securely; it is ignored by Git and set to mode `600`.
+
+Open `http://<VPS-IP>:3000` after deployment and allow TCP port `3000` through the VPS firewall. The database ports bind to loopback only. Put an HTTPS reverse proxy in front of the dashboard before using it with real accounts or exposing credentials over the internet.
+
+The installer does not create a Processor. The agent can send accepted logs to Redis, but they will not reach ClickHouse until `cmd/processor` is implemented and added to deployment. Alert processing and chaos testing are also not implemented yet.
+
 ## Tests and checks
 
 Run Go tests from the repository root:

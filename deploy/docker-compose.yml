@@ -3,13 +3,13 @@ services:
     image: clickhouse/clickhouse-server:24.8
     restart: unless-stopped
     environment:
-      CLICKHOUSE_DB: centilog
-      CLICKHOUSE_USER: centilog
-      CLICKHOUSE_PASSWORD: centilog
+      CLICKHOUSE_DB: ${CLICKHOUSE_DB:-centilog}
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-centilog}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-centilog}
       CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: "1"
     ports:
-      - "8123:8123"
-      - "9000:9000"
+      - "127.0.0.1:8123:8123"
+      - "127.0.0.1:9000:9000"
     volumes:
       - clickhouse_data:/var/lib/clickhouse
       - ./clickhouse/init.sql:/docker-entrypoint-initdb.d/001-init.sql:ro
@@ -29,22 +29,16 @@ services:
       - redis-server
       - --appendonly
       - "yes"
-      - --aclfile
-      - /etc/redis/users.acl
+      - --requirepass
+      - ${REDIS_PASSWORD:-centilog}
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-centilog}
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     volumes:
       - redis_data:/data
-      - ./redis/users.acl:/etc/redis/users.acl:ro
     healthcheck:
-      test:
-        - CMD
-        - redis-cli
-        - --user
-        - centilog
-        - --pass
-        - centilog
-        - ping
+      test: ["CMD-SHELL", "redis-cli --no-auth-warning -a \"$$REDIS_PASSWORD\" ping | grep -q PONG"]
       interval: 10s
       timeout: 5s
       retries: 12
@@ -54,15 +48,15 @@ services:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_DB: centilog
-      POSTGRES_USER: centilog
-      POSTGRES_PASSWORD: centilog
+      POSTGRES_DB: ${POSTGRES_DB:-centilog}
+      POSTGRES_USER: ${POSTGRES_USER:-centilog}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-centilog}
     command:
       - postgres
       - -c
       - timezone=UTC
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./postgres/init.sql:/docker-entrypoint-initdb.d/001-init.sql:ro
@@ -74,6 +68,101 @@ services:
       timeout: 5s
       retries: 12
       start_period: 10s
+
+  ingest:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.go
+      args:
+        SERVICE: ingest
+    restart: unless-stopped
+    environment:
+      CENTILOG_POSTGRES_DSN: postgres://${POSTGRES_USER:-centilog}:${POSTGRES_PASSWORD:-centilog}@postgres:5432/${POSTGRES_DB:-centilog}?sslmode=disable
+      CENTILOG_REDIS_URL: redis://default:${REDIS_PASSWORD:-centilog}@redis:6379/0
+    expose:
+      - "8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+  api:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.go
+      args:
+        SERVICE: api
+    restart: unless-stopped
+    environment:
+      CENTILOG_POSTGRES_DSN: postgres://${POSTGRES_USER:-centilog}:${POSTGRES_PASSWORD:-centilog}@postgres:5432/${POSTGRES_DB:-centilog}?sslmode=disable
+      CENTILOG_CLICKHOUSE_DSN: clickhouse://${CLICKHOUSE_USER:-centilog}:${CLICKHOUSE_PASSWORD:-centilog}@clickhouse:9000/${CLICKHOUSE_DB:-centilog}
+      CENTILOG_CLICKHOUSE_HTTP_URL: http://clickhouse:8123
+      JWT_SECRET: ${JWT_SECRET:-}
+    expose:
+      - "8081"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8081/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+  agent:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.go
+      args:
+        SERVICE: agent
+    restart: unless-stopped
+    environment:
+      CENTILOG_AGENT_CONFIG: /app/configs/agent.yaml
+      CENTILOG_AGENT_SERVER_URL: http://ingest:8080
+      CENTILOG_AGENT_API_KEY: ${DEMO_SERVICE_API_KEY:-demo-key-123}
+      CENTILOG_AGENT_BUFFER_DIR: /app/data/agent-buffer
+    volumes:
+      - ../sample-logs:/app/sample-logs:ro
+      - ../data/agent-buffer:/app/data/agent-buffer
+    depends_on:
+      ingest:
+        condition: service_healthy
+
+  web:
+    build:
+      context: ../web
+      dockerfile: Dockerfile
+      args:
+        CENTILOG_API_ORIGIN: http://api:8081
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      CENTILOG_API_ORIGIN: http://api:8081
+    ports:
+      - "3000:3000"
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3000/login').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
+      interval: 15s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
 
 volumes:
   clickhouse_data:
