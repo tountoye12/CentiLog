@@ -1,0 +1,9 @@
+Create a  project rule file at with
+alwaysApply: true . It should tell the AI: always follow @SPEC.md; the user is not
+a programmer so always give exact step-by-step run and verify instructions; keep
+changes small and runnable; never rewrite unrelated files; store all timestamps in
+UTC; redaction must run in both agent and ingest; never log secrets; Go code uses
+standard library first, graceful shutdown and tests for parsing/redaction; frontend
+uses Next.js App Router, TypeScript and Tailwind. Also create a .gitignore
+suitable for Go, Node/Next.js, a data/ folder, a sample-logs/ folder and .env
+files, then initialize a git repository.

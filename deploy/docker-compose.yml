@@ -1,0 +1,81 @@
+services:
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.8
+    restart: unless-stopped
+    environment:
+      CLICKHOUSE_DB: centilog
+      CLICKHOUSE_USER: centilog
+      CLICKHOUSE_PASSWORD: centilog
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: "1"
+    ports:
+      - "8123:8123"
+      - "9000:9000"
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+      - ./clickhouse/init.sql:/docker-entrypoint-initdb.d/001-init.sql:ro
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - clickhouse-client --user "$$CLICKHOUSE_USER" --password "$$CLICKHOUSE_PASSWORD" --query "SELECT 1"
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  redis:
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    command:
+      - redis-server
+      - --appendonly
+      - "yes"
+      - --aclfile
+      - /etc/redis/users.acl
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+      - ./redis/users.acl:/etc/redis/users.acl:ro
+    healthcheck:
+      test:
+        - CMD
+        - redis-cli
+        - --user
+        - centilog
+        - --pass
+        - centilog
+        - ping
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: centilog
+      POSTGRES_USER: centilog
+      POSTGRES_PASSWORD: centilog
+    command:
+      - postgres
+      - -c
+      - timezone=UTC
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/001-init.sql:ro
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready --username "$$POSTGRES_USER" --dbname "$$POSTGRES_DB"
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+volumes:
+  clickhouse_data:
+  redis_data:
+  postgres_data:

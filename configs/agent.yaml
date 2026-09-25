@@ -1,0 +1,22 @@
+server_url: http://localhost:8080
+api_key: demo-key-123
+env: development
+buffer_dir: ./data/agent-buffer
+max_buffer_size_mb: 512
+batch_size: 500
+flush_interval: 5s
+min_level: trace
+sampling:
+  trace: 100
+  debug: 20
+  info: 100
+  warn: 100
+  error: 100
+  fatal: 100
+files:
+  - path: ./sample-logs/app.log
+    format: auto
+    time_zone: Local
+  - path: ./sample-logs/legacy.log
+    format: text
+    time_zone: Asia/Kolkata
