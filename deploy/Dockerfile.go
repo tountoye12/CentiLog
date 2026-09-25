@@ -5,7 +5,11 @@ COPY go.mod ./
 RUN go mod download
 COPY . .
 ARG SERVICE
-RUN test -n "$SERVICE" && CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/centilog "./cmd/${SERVICE}"
+RUN case "$SERVICE" in \
+            agent|api|ingest) ;; \
+            *) echo "invalid or missing SERVICE build argument: '$SERVICE' (expected agent, api, or ingest)" >&2; exit 1 ;; \
+        esac
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/centilog "./cmd/${SERVICE}"
 
 FROM alpine:3.21
 RUN apk add --no-cache ca-certificates \
